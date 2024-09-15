@@ -50,6 +50,16 @@ export const INFINITY = 0b010000000;
  */
 export const _INFINITY = 0b100000000;
 
+/**
+ * allow partial parsing of the outermost JSON object
+ */
+export const OUTERMOST_OBJ = 0b0000000100000000; // 512
+
+/**
+ * allow partial parsing of the outermost JSON array
+ */
+export const OUTERMOST_ARR = 0b0000001000000000; // 1024
+
 export const INF = INFINITY | _INFINITY;
 export const SPECIAL = NULL | BOOL | INF | NAN;
 export const ATOM = STR | NUM | SPECIAL;
@@ -58,7 +68,7 @@ export const ALL = ATOM | COLLECTION;
 
 /**
  * Control what types you allow to be partially parsed.
- * The default is to allow all types to be partially parsed, which in most casees is the best option.
+ * The default is to allow all types to be partially parsed, which in most cases is the best option.
  * @example
  * If you don't want to allow partial objects, you can use the following code:
  * ```ts
@@ -86,6 +96,8 @@ export const Allow = {
   NAN,
   INFINITY,
   _INFINITY,
+  OUTERMOST_OBJ,
+  OUTERMOST_ARR,
   INF,
   SPECIAL,
   ATOM,
