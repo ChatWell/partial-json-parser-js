@@ -124,7 +124,7 @@ test("interleaved_partial_objects_and_arrays", () => {
 });
 
 test("complex_example", () => {
-  const obj = '{"init": 1, "out": ["a1", "b", [{ "c": 2, "d": 3, "e": 4 }]]';
+  const obj = '{"init": 1, "out": ["a1", "b", [{ "c": 2, "d": 3, "e": 4 }]';
   console.log(
     "Parsed: ",
     JSON.stringify(parse(obj, OUTERMOST_OBJ | OUTERMOST_ARR))

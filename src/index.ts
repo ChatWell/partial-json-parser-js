@@ -15,10 +15,10 @@ class MalformedJSON extends Error {}
  */
 function parseJSON(jsonString: string, allowPartial: number = Allow.ALL): any {
   if (typeof jsonString !== "string") {
-    throw new TypeError(`expecting str, got ${typeof jsonString}`);
+    throw new TypeError(`expecting string, got ${typeof jsonString}`);
   }
   if (!jsonString.trim()) {
-    throw new Error(`${jsonString} is empty`);
+    throw new Error(`Input is empty`);
   }
   return _parseJSON(jsonString.trim(), allowPartial);
 }
@@ -26,7 +26,8 @@ function parseJSON(jsonString: string, allowPartial: number = Allow.ALL): any {
 const _parseJSON = (jsonString: string, allow: number) => {
   const length = jsonString.length;
   let index = 0;
-  let depth = 0; // Initialize depth counter
+  let objectDepth = 0; // Track the current depth of objects
+  let arrayDepth = 0; // Track the current depth of arrays
 
   const markPartialJSON = (msg: string) => {
     throw new PartialJSON(`${msg} at position ${index}`);
@@ -46,17 +47,17 @@ const _parseJSON = (jsonString: string, allow: number) => {
 
     // Handle object
     if (currentChar === "{") {
-      depth++;
+      objectDepth++;
       const result = parseObj();
-      depth--;
+      objectDepth--;
       return result;
     }
 
     // Handle array
     if (currentChar === "[") {
-      depth++;
+      arrayDepth++;
       const result = parseArr();
-      depth--;
+      arrayDepth--;
       return result;
     }
 
@@ -123,29 +124,35 @@ const _parseJSON = (jsonString: string, allow: number) => {
     const start = index;
     let escape = false;
     index++; // skip initial quote
-    while (index < length && (jsonString[index] !== '"' || escape)) {
-      if (jsonString[index] === "\\") {
-        escape = !escape;
+    while (index < length) {
+      const char = jsonString[index];
+      if (char === '"' && !escape) {
+        index++; // include the closing quote
+        try {
+          return JSON.parse(jsonString.substring(start, index));
+        } catch (e) {
+          throwMalformedError(`Invalid string: ${e}`);
+        }
+      }
+      if (char === "\\" && !escape) {
+        escape = true;
       } else {
         escape = false;
       }
       index++;
     }
-    if (jsonString.charAt(index) === '"') {
+    // If we reach here, the string was unterminated
+    if (Allow.STR & allow) {
       try {
-        return JSON.parse(jsonString.substring(start, ++index));
-      } catch (e) {
-        throwMalformedError(String(e));
-      }
-    } else if (Allow.STR & allow) {
-      try {
-        // Attempt to close the string properly
+        // Attempt to close the string by adding the closing quote
         return JSON.parse(jsonString.substring(start, index) + '"');
       } catch (e) {
-        // Remove the trailing backslash if present
+        // Attempt to recover by removing trailing backslashes
         const lastBackslash = jsonString.lastIndexOf("\\");
         if (lastBackslash > start) {
-          return JSON.parse(jsonString.substring(start, lastBackslash) + '"');
+          try {
+            return JSON.parse(jsonString.substring(start, lastBackslash) + '"');
+          } catch (_) {}
         }
         throwMalformedError("Unterminated string literal");
       }
@@ -154,7 +161,7 @@ const _parseJSON = (jsonString: string, allow: number) => {
   };
 
   const parseObj = () => {
-    const isOutermost = depth === 1;
+    const isOutermost = objectDepth === 1;
     index++; // skip initial brace
     skipBlank();
     const obj: Record<string, any> = {};
@@ -170,12 +177,15 @@ const _parseJSON = (jsonString: string, allow: number) => {
           }
           markPartialJSON("Unexpected end of object");
         }
+        // Parse key
         const key = parseStr();
         skipBlank();
         if (jsonString[index] !== ":") {
           throwMalformedError(`Expected ':' after key "${key}"`);
         }
         index++; // skip colon
+        skipBlank();
+        // Parse value
         try {
           const value = parseAny();
           obj[key] = value;
@@ -185,10 +195,19 @@ const _parseJSON = (jsonString: string, allow: number) => {
             allow & Allow.OBJ
           ) {
             return obj;
-          } else throw e;
+          }
+          throw e;
         }
         skipBlank();
-        if (jsonString[index] === ",") index++; // skip comma
+        // Handle comma or end of object
+        if (jsonString[index] === ",") {
+          index++; // skip comma
+          skipBlank();
+          // If next character is '}', it's the end of the object
+          if (jsonString[index] === "}") {
+            break;
+          }
+        }
       }
     } catch (e) {
       if ((isOutermost && allow & Allow.OUTERMOST_OBJ) || allow & Allow.OBJ) {
@@ -197,12 +216,19 @@ const _parseJSON = (jsonString: string, allow: number) => {
         markPartialJSON("Expected '}' at end of object");
       }
     }
-    index++; // skip final brace
-    return obj;
+    if (jsonString[index] === "}") {
+      index++; // skip final brace
+      return obj;
+    }
+    // If we reach here, the object was not properly closed
+    if ((isOutermost && allow & Allow.OUTERMOST_OBJ) || allow & Allow.OBJ) {
+      return obj;
+    }
+    markPartialJSON("Expected '}' at end of object");
   };
 
   const parseArr = () => {
-    const isOutermost = depth === 1;
+    const isOutermost = arrayDepth === 1;
     index++; // skip initial bracket
     const arr: any[] = [];
     try {
@@ -217,27 +243,65 @@ const _parseJSON = (jsonString: string, allow: number) => {
           }
           markPartialJSON("Unexpected end of array");
         }
+        // Parse value
         const value = parseAny();
         arr.push(value);
         skipBlank();
-        if (jsonString[index] === ",") index++; // skip comma
+        // Handle comma or end of array
+        if (jsonString[index] === ",") {
+          index++; // skip comma
+          skipBlank();
+          // If next character is ']', it's the end of the array
+          if (jsonString[index] === "]") {
+            break;
+          }
+        }
       }
     } catch (e) {
       if ((isOutermost && allow & Allow.OUTERMOST_ARR) || allow & Allow.ARR) {
         return arr;
       }
-      markPartialJSON("Expected ']' at end of array");
+      throw e;
     }
-    index++; // skip final bracket
-    return arr;
+    if (jsonString[index] === "]") {
+      index++; // skip final bracket
+      return arr;
+    }
+    // If we reach here, the array was not properly closed
+    if ((isOutermost && allow & Allow.OUTERMOST_ARR) || allow & Allow.ARR) {
+      return arr;
+    }
+    markPartialJSON("Expected ']' at end of array");
   };
 
   const parseNum = () => {
     const start = index;
 
+    // Handle negative sign
     if (jsonString[index] === "-") index++;
-    while (index < length && /[0-9eE.+-]/.test(jsonString[index])) {
+
+    // Integral part
+    while (index < length && /[0-9]/.test(jsonString[index])) {
       index++;
+    }
+
+    // Fractional part
+    if (jsonString[index] === ".") {
+      index++;
+      while (index < length && /[0-9]/.test(jsonString[index])) {
+        index++;
+      }
+    }
+
+    // Exponent part
+    if (jsonString[index] === "e" || jsonString[index] === "E") {
+      index++;
+      if (jsonString[index] === "+" || jsonString[index] === "-") {
+        index++;
+      }
+      while (index < length && /[0-9]/.test(jsonString[index])) {
+        index++;
+      }
     }
 
     const numStr = jsonString.substring(start, index);
@@ -245,12 +309,12 @@ const _parseJSON = (jsonString: string, allow: number) => {
     try {
       return JSON.parse(numStr);
     } catch (e) {
-      if (allow & Allow.NUM) {
+      if (Allow.NUM & allow) {
         // Attempt to parse the valid part of the number
-        const validPart = numStr.match(/^-?\d+(\.\d+)?([eE][+-]?\d+)?/);
-        if (validPart) {
+        const validMatch = numStr.match(/^-?\d+(\.\d+)?([eE][+-]?\d+)?/);
+        if (validMatch && validMatch[0]) {
           try {
-            return JSON.parse(validPart[0]);
+            return JSON.parse(validMatch[0]);
           } catch (_) {}
         }
       }
