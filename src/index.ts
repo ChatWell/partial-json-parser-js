@@ -117,7 +117,8 @@ function parseJSON(jsonString: string, allowPartial: number = Allow.ALL): any {
         } catch (e) {
           throwMalformedError(String(e));
         }
-      } else if (Allow.STR & currentAllow) { // Use currentAllow
+      } else if (Allow.STR & currentAllow) {
+        // Use currentAllow
         try {
           return JSON.parse(
             jsonString.substring(start, index - Number(escape)) + '"'
@@ -133,9 +134,7 @@ function parseJSON(jsonString: string, allowPartial: number = Allow.ALL): any {
     };
 
     const parseObj: (currentAllow: number) => any = (currentAllow) => {
-      if (Allow.OUTERMOST_OBJ && depth > 0 && !(Allow.OBJ & currentAllow)) { // Use currentAllow
-        throwMalformedError("Nested objects must be complete");
-      }
+      const isOutermost = depth === 0;
       depth++;
       index++; // skip initial brace
       skipBlank();
@@ -145,19 +144,22 @@ function parseJSON(jsonString: string, allowPartial: number = Allow.ALL): any {
           skipBlank();
           if (
             index >= length &&
-            (Allow.OBJ & currentAllow || (Allow.OUTERMOST_OBJ & currentAllow && depth === 1)) // Use currentAllow
+            (Allow.OBJ & currentAllow ||
+              (Allow.OUTERMOST_OBJ & currentAllow && isOutermost))
           )
             return obj;
-          const key = parseStr(currentAllow); // Pass currentAllow
+          const key = parseStr(currentAllow);
           skipBlank();
           index++; // skip colon
           try {
-            const value = parseAny(currentAllow); // Pass currentAllow
+            // Allow ARR when OBJ is allowed to parse arrays within objects
+            const valueAllow = currentAllow | Allow.ARR;
+            const value = parseAny(valueAllow);
             obj[key] = value;
           } catch (e) {
             if (
               Allow.OBJ & currentAllow ||
-              (Allow.OUTERMOST_OBJ & currentAllow && depth === 1) // Use currentAllow
+              (Allow.OUTERMOST_OBJ & currentAllow && isOutermost)
             )
               return obj;
             else throw e;
@@ -166,7 +168,10 @@ function parseJSON(jsonString: string, allowPartial: number = Allow.ALL): any {
           if (jsonString[index] === ",") index++; // skip comma
         }
       } catch (e) {
-        if (Allow.OBJ & currentAllow || (Allow.OUTERMOST_OBJ & currentAllow && depth === 1)) // Use currentAllow
+        if (
+          Allow.OBJ & currentAllow ||
+          (Allow.OUTERMOST_OBJ & currentAllow && isOutermost)
+        )
           return obj;
         else markPartialJSON("Expected '}' at end of object");
       }
@@ -187,13 +192,17 @@ function parseJSON(jsonString: string, allowPartial: number = Allow.ALL): any {
             // Allow OBJ when ARR is allowed to parse objects within arrays
             const elementAllow = currentAllow | Allow.OBJ; // Use currentAllow
             const element = parseAny(elementAllow); // Pass elementAllow
-            
+
             // Check if the element is an empty object and we're using OUTERMOST_ARR
-            if (isOutermost && (Allow.OUTERMOST_ARR & currentAllow) && 
-                Object.keys(element).length === 0 && element.constructor === Object) {
+            if (
+              isOutermost &&
+              Allow.OUTERMOST_ARR & currentAllow &&
+              Object.keys(element).length === 0 &&
+              element.constructor === Object
+            ) {
               break; // Stop parsing if we encounter an empty object at the end
             }
-            
+
             arr.push(element);
           } catch (e) {
             if (
@@ -210,7 +219,11 @@ function parseJSON(jsonString: string, allowPartial: number = Allow.ALL): any {
           }
         }
       } catch (e) {
-        if (Allow.ARR & currentAllow || (Allow.OUTERMOST_ARR & currentAllow && isOutermost)) { // Use currentAllow
+        if (
+          Allow.ARR & currentAllow ||
+          (Allow.OUTERMOST_ARR & currentAllow && isOutermost)
+        ) {
+          // Use currentAllow
           return arr;
         }
         markPartialJSON("Expected ']' at end of array");
@@ -222,13 +235,15 @@ function parseJSON(jsonString: string, allowPartial: number = Allow.ALL): any {
       return arr;
     };
 
-    const parseNum: (currentAllow: number) => any = (currentAllow) => { // Add currentAllow
+    const parseNum: (currentAllow: number) => any = (currentAllow) => {
+      // Add currentAllow
       if (index === 0) {
         if (jsonString === "-") throwMalformedError("Not sure what '-' is");
         try {
           return JSON.parse(jsonString);
         } catch (e) {
-          if (Allow.NUM & currentAllow) // Use currentAllow
+          if (Allow.NUM & currentAllow)
+            // Use currentAllow
             try {
               return JSON.parse(
                 jsonString.substring(0, jsonString.lastIndexOf("e"))
@@ -244,7 +259,8 @@ function parseJSON(jsonString: string, allowPartial: number = Allow.ALL): any {
       while (jsonString[index] && ",]}".indexOf(jsonString[index]) === -1)
         index++;
 
-      if (index == length && !(Allow.NUM & currentAllow)) // Use currentAllow
+      if (index == length && !(Allow.NUM & currentAllow))
+        // Use currentAllow
         markPartialJSON("Unterminated number literal");
 
       try {

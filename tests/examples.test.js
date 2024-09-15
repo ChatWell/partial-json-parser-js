@@ -116,3 +116,12 @@ test("outermost_arr_with_incomplete_nested_array", () => {
 test("outermost_arr_with_complete_nested_array", () => {
   expect(parse("[1, 2, [3, 4], [5,", OUTERMOST_ARR)).toEqual([1, 2, [3, 4]]);
 });
+
+test("interleaved_partial_objects_and_arrays", () => {
+  expect(
+    parse(
+      '{"outer1": "yes", "outer2": [{"inner1":"yes"}, {"inner2": "no"',
+      OUTERMOST_OBJ | OBJ | ARR
+    )
+  ).toEqual({ outer1: "yes", outer2: [{ inner1: "yes" }, { inner2: "no" }] });
+});
