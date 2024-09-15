@@ -56,7 +56,36 @@ export const ATOM = STR | NUM | SPECIAL;
 export const COLLECTION = ARR | OBJ;
 export const ALL = ATOM | COLLECTION;
 
-/** 
+/**
+ * allow only the outermost object to be partially parsed
+ */
+export const OUTERMOST_OBJ = 0b1000000000;
+
+/**
+ * allow only the outermost array to be partially parsed
+ */
+export const OUTERMOST_ARR = 0b10000000000;
+
+export const Allow = {
+  STR,
+  NUM,
+  ARR,
+  OBJ,
+  NULL,
+  BOOL,
+  NAN,
+  INFINITY,
+  _INFINITY,
+  OUTERMOST_OBJ,
+  OUTERMOST_ARR,
+  INF,
+  SPECIAL,
+  ATOM,
+  COLLECTION,
+  ALL,
+};
+
+/**
  * Control what types you allow to be partially parsed.
  * The default is to allow all types to be partially parsed, which in most casees is the best option.
  * @example
@@ -76,6 +105,4 @@ export const ALL = ATOM | COLLECTION;
  * parse(`["complete string", "incompl`, ~Allow.STR); // [ 'complete string' ]
  * ```
  */
-export const Allow = { STR, NUM, ARR, OBJ, NULL, BOOL, NAN, INFINITY, _INFINITY, INF, SPECIAL, ATOM, COLLECTION, ALL };
-
 export default Allow;
